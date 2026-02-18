@@ -119,10 +119,20 @@ class WatcherServer:
                 )
 
             elif component == "button" and object_id == "analyze_scene":
-                # Trigger manual scene analysis
-                if self._device_ws:
+                if not self._device_ws:
+                    logger.warning(
+                        "Cannot send analyze_scene: device not connected via WebSocket"
+                    )
+                else:
                     await self._send_to_device(
-                        json.dumps({"type": "request_frame", "payload": {}})
+                        json.dumps(
+                            {
+                                "type": "alert",
+                                "status": "Analyzing",
+                                "message": "Analyzing scene...",
+                                "emotion": "microchip_ai",
+                            }
+                        )
                     )
 
             elif component == "text" and object_id == "custom_prompt":
@@ -148,53 +158,85 @@ class WatcherServer:
                 )
 
             elif component == "notify" and object_id == "tts":
-                # Text-to-speech
-                audio = await self._speechkit.synthesize(payload)
-                if audio and self._device_ws:
+                if not self._device_ws:
+                    logger.warning(
+                        "Cannot send tts: device not connected via WebSocket"
+                    )
+                else:
                     await self._send_to_device(
                         json.dumps(
-                            {
-                                "type": "audio_play",
-                                "payload": {"data": audio.hex(), "format": "opus"},
-                            }
+                            {"type": "tts", "state": "sentence_start", "text": payload}
                         )
                     )
 
             elif component == "siren" and object_id == "alarm":
-                # Siren control
-                if self._device_ws:
-                    await self._send_to_device(
-                        json.dumps(
-                            {"type": "siren", "payload": {"state": payload.upper()}}
-                        )
+                if not self._device_ws:
+                    logger.warning(
+                        "Cannot send alarm: device not connected via WebSocket"
                     )
+                else:
+                    if payload.upper() == "ON":
+                        await self._send_to_device(
+                            json.dumps(
+                                {
+                                    "type": "alert",
+                                    "status": "ALARM",
+                                    "message": "Alarm triggered!",
+                                    "emotion": "triangle_exclamation",
+                                }
+                            )
+                        )
+                    else:
+                        await self._send_to_device(
+                            json.dumps({"type": "llm", "emotion": "neutral"})
+                        )
                 await self._ha_integration.publish_state("siren/alarm", payload)
 
             elif component == "select" and object_id == "display_mode":
-                from display import DisplayMode
-
-                mode_map = {
-                    "Clock": DisplayMode.CLOCK,
-                    "Weather": DisplayMode.WEATHER,
-                    "Status": DisplayMode.STATUS,
-                    "AI Log": DisplayMode.AI_LOG,
-                    "Custom": DisplayMode.CUSTOM,
+                mode_to_emotion = {
+                    "Clock": "neutral",
+                    "Weather": "cloud_sun",
+                    "Status": "microchip_ai",
+                    "AI Log": "robot",
+                    "Custom": "neutral",
                 }
-                if payload in mode_map:
-                    await self._display.set_mode(mode_map[payload])
+                if payload in mode_to_emotion:
+                    if not self._device_ws:
+                        logger.warning(
+                            "Cannot send display_mode: device not connected via WebSocket"
+                        )
+                    else:
+                        await self._send_to_device(
+                            json.dumps(
+                                {"type": "llm", "emotion": mode_to_emotion[payload]}
+                            )
+                        )
+                    await self._display.set_mode_local(payload)
                     await self._ha_integration.publish_state(
                         "select/display_mode", payload
                     )
 
             elif component == "text" and object_id == "display_message":
-                await self._display.show_message(payload)
+                if not self._device_ws:
+                    logger.warning(
+                        "Cannot send display_message: device not connected via WebSocket"
+                    )
+                else:
+                    await self._send_to_device(
+                        json.dumps(
+                            {"type": "tts", "state": "sentence_start", "text": payload}
+                        )
+                    )
                 await self._ha_integration.publish_state(
                     "text/display_message", payload
                 )
 
             elif component == "switch" and object_id == "display_power":
                 on = payload.upper() == "ON"
-                await self._display.set_power(on)
+                if on and self._device_ws:
+                    await self._send_to_device(
+                        json.dumps({"type": "llm", "emotion": "neutral"})
+                    )
                 await self._ha_integration.publish_state(
                     "switch/display_power", "ON" if on else "OFF"
                 )
