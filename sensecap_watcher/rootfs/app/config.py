@@ -37,7 +37,7 @@ class Config:
         self.ollama_vision_model = options.get("ollama_vision_model", "llava")
 
         # MQTT credentials: try Supervisor API first, then env vars, then defaults
-        self.supervisor_token = os.environ.get("SUPERVISOR_TOKEN", "")
+        self.supervisor_token = self._get_supervisor_token()
         mqtt = self._fetch_mqtt_from_supervisor()
         if mqtt:
             self.mqtt_host = mqtt["host"]
@@ -68,6 +68,45 @@ class Config:
             self.mqtt_port,
             self.mqtt_user,
         )
+
+    def _get_supervisor_token(self) -> str:
+        """Get Supervisor token from environment or s6-overlay files.
+
+        Returns:
+            The supervisor token or empty string if not found.
+        """
+        # 1. Try standard environment variable
+        token = os.environ.get("SUPERVISOR_TOKEN")
+        if token:
+            logger.debug("SUPERVISOR_TOKEN found in os.environ")
+            return token.strip()
+
+        # 2. Try s6-overlay v3 primary path
+        s6_path_v3 = "/run/s6/container_environment/SUPERVISOR_TOKEN"
+        if os.path.exists(s6_path_v3):
+            try:
+                with open(s6_path_v3, "r") as f:
+                    token = f.read().strip()
+                if token:
+                    logger.debug(f"SUPERVISOR_TOKEN found in {s6_path_v3}")
+                    return token
+            except Exception as e:
+                logger.debug(f"Failed to read {s6_path_v3}: {e}")
+
+        # 3. Try s6-overlay v3 alternative path
+        s6_path_alt = "/var/run/s6/container_environment/SUPERVISOR_TOKEN"
+        if os.path.exists(s6_path_alt):
+            try:
+                with open(s6_path_alt, "r") as f:
+                    token = f.read().strip()
+                if token:
+                    logger.debug(f"SUPERVISOR_TOKEN found in {s6_path_alt}")
+                    return token
+            except Exception as e:
+                logger.debug(f"Failed to read {s6_path_alt}: {e}")
+
+        logger.warning("SUPERVISOR_TOKEN not found in environment or s6-overlay paths")
+        return ""
 
     def _fetch_mqtt_from_supervisor(self) -> dict | None:
         """Fetch MQTT credentials from HA Supervisor API.
