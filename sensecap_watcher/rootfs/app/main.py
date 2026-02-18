@@ -5,6 +5,7 @@ import json
 import logging
 import signal
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -376,25 +377,42 @@ class WatcherServer:
         return web.Response(status=404, text="Firmware not found")
 
     async def handle_ota_post(self, request: web.Request) -> web.Response:
-        """Handle diagnostic POST request from device.
-
-        Args:
-            request: HTTP request
-
-        Returns:
-            JSON response
-        """
-        logger.info(f"OTA POST request: {request.method} {request.path}")
-        logger.info(f"Headers: {dict(request.headers)}")
-
-        body = await request.read()
+        """Handle xiaozhi OTA check-in from device."""
         try:
-            data = json.loads(body)
-            logger.info(f"Body (JSON): {data}")
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            logger.info(f"Body (Raw): {body[:2000]!r}")
+            body = await request.read()
+            try:
+                device_info = json.loads(body)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                device_info = {}
 
-        return web.json_response({"status": "ok"})
+            # Log device check-in
+            app_info = device_info.get("application", {})
+            board_info = device_info.get("board", {})
+            device_version = app_info.get("version", "unknown")
+            device_ip = board_info.get("ip", request.remote)
+            mac = device_info.get("mac_address", "unknown")
+            logger.info(
+                f"OTA check-in: device={mac}, version={device_version}, ip={device_ip}"
+            )
+
+            # Build response per xiaozhi OTA protocol
+            ws_host = request.host.split(":")[0]
+            ws_port = self._config.websocket_port
+
+            response = {
+                "server_time": {
+                    "timestamp": int(time.time() * 1000),
+                    "timezone_offset": 0,
+                },
+                "websocket": {"url": f"ws://{ws_host}:{ws_port}/ws"},
+                "firmware": {},  # Empty = no update available
+            }
+
+            logger.info(f"OTA response: websocket={response['websocket']['url']}")
+            return web.json_response(response)
+        except Exception as e:
+            logger.error(f"OTA POST handler error: {e}")
+            return web.json_response({"error": str(e)}, status=500)
 
     # ==================== Reconnect Logic ====================
 
