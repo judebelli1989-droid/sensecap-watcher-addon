@@ -224,12 +224,11 @@ class WatcherServer:
         )
         logger.info(f"WebSocket server started on port {self.config.websocket_port}")
 
-    async def handle_device_connection(self, websocket, path):
+    async def handle_device_connection(self, websocket):
         """Handle device WebSocket connection.
 
         Args:
             websocket: WebSocket connection
-            path: Connection path
         """
         logger.info(f"Device connected from {websocket.remote_address}")
 
