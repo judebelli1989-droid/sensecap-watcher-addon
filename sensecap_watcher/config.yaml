@@ -27,6 +27,8 @@ options:
   custom_prompt: "Опиши что происходит. Если видишь людей или необычную активность — сообщи."
   websocket_port: 8080
   ota_port: 8081
+  device_mqtt_user: "watcher"
+  device_mqtt_password: "watcher123"
   log_level: "info"
   llm_provider: "claude"
   ollama_url: "http://localhost:11434"
@@ -45,6 +47,8 @@ schema:
   custom_prompt: str
   websocket_port: port
   ota_port: port
+  device_mqtt_user: str
+  device_mqtt_password: str
   log_level: list(debug|info|warning|error)
   llm_provider: list(claude|ollama)
   ollama_url: url?

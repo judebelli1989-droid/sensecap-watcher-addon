@@ -482,8 +482,8 @@ class WatcherServer:
             mqtt_config = {
                 "endpoint": f"mqtt://{ha_host}:{self.config.mqtt_port}",
                 "client_id": f"sensecap-watcher-{mac_clean}",
-                "username": self.config.mqtt_user,
-                "password": self.config.mqtt_password,
+                "username": self.config.device_mqtt_user,
+                "password": self.config.device_mqtt_password,
                 "publish_topic": f"xiaozhi/device/{mac_clean}",
                 "subscribe_topic": f"xiaozhi/server/{mac_clean}",
             }

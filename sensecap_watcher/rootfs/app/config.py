@@ -36,6 +36,10 @@ class Config:
         self.ollama_model = options.get("ollama_model", "llama3")
         self.ollama_vision_model = options.get("ollama_vision_model", "llava")
 
+        # Device MQTT credentials (for external device connection to Mosquitto)
+        self.device_mqtt_user = options.get("device_mqtt_user", "watcher")
+        self.device_mqtt_password = options.get("device_mqtt_password", "watcher123")
+
         # MQTT credentials: try Supervisor API first, then env vars, then defaults
         self.supervisor_token = self._get_supervisor_token()
         mqtt = self._fetch_mqtt_from_supervisor()
