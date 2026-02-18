@@ -38,6 +38,13 @@ class Config:
 
         # SenseCraft MCP — connects to SenseCraft Agent broker for voice + HA control
         self.sensecraft_mcp_url = options.get("sensecraft_mcp_url", "")
+        if not self.sensecraft_mcp_url:
+            try:
+                self.sensecraft_mcp_url = (
+                    open("/data/sensecraft_mcp_url.txt").read().strip()
+                )
+            except FileNotFoundError:
+                pass
 
         # Device MQTT credentials (for external device connection to Mosquitto)
         self.device_mqtt_user = options.get("device_mqtt_user", "watcher")

@@ -123,7 +123,7 @@ class SenseCraftMCP:
                 {
                     "name": t["name"],
                     "description": t["description"],
-                    "inputSchema": t["parameters"],
+                    "inputSchema": t["input_schema"],
                 }
             )
         await self._send(
