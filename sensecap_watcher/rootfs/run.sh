@@ -1,9 +1,10 @@
-#!/usr/bin/with-contenv bash
+#!/bin/bash
 
 echo "Starting SenseCAP Watcher AI..."
 
-# with-contenv injects SUPERVISOR_TOKEN from s6-overlay
+# SUPERVISOR_TOKEN is injected by HA Supervisor as Docker env var
 echo "DEBUG: SUPERVISOR_TOKEN length = ${#SUPERVISOR_TOKEN}"
+echo "DEBUG: All env vars with TOKEN: $(env | grep -i token | head -3)"
 
 # Get MQTT credentials from Supervisor API
 if [ -n "${SUPERVISOR_TOKEN}" ]; then
