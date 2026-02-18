@@ -475,35 +475,23 @@ class WatcherServer:
             # Store device MAC for MQTT topic routing
             self._device_mac = mac_clean
 
-            # Build MQTT config for device - point to HA's Mosquitto broker
-            # Device connects permanently via MqttProtocol when mqtt section present
-            # Use the HA server's external IP (not core-mosquitto which is Docker-internal)
+            # Use WebSocket protocol - device connects on demand
+            # MQTT protocol causes crash on SenseCAP Watcher firmware
             ha_host = request.host.split(":")[0]  # IP device used to reach OTA
-            mqtt_config = {
-                "endpoint": f"mqtt://{ha_host}:{self.config.mqtt_port}",
-                "client_id": f"sensecap-watcher-{mac_clean}",
-                "username": self.config.device_mqtt_user,
-                "password": self.config.device_mqtt_password,
-                "publish_topic": f"xiaozhi/device/{mac_clean}",
-                "subscribe_topic": f"xiaozhi/server/{mac_clean}",
-            }
+            ws_port = self.config.websocket_port
 
             response = {
                 "server_time": {
                     "timestamp": int(time.time() * 1000),
                     "timezone_offset": 0,
                 },
-                "mqtt": mqtt_config,
+                "websocket": {
+                    "url": f"ws://{ha_host}:{ws_port}/ws",
+                },
                 "firmware": {},
             }
 
-            # Subscribe to device's publish topic to receive its messages
-            await self._subscribe_device_mqtt(mac_clean)
-
-            logger.info(
-                f"OTA response: mqtt endpoint={mqtt_config['endpoint']}, "
-                f"device_topic={mqtt_config['publish_topic']}"
-            )
+            logger.info(f"OTA response: websocket=ws://{ha_host}:{ws_port}/ws")
             return web.json_response(response)
         except Exception as e:
             logger.error(f"OTA POST handler error: {e}")
