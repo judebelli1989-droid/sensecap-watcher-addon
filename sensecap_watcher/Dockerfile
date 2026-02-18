@@ -24,3 +24,5 @@ COPY rootfs /
 RUN chmod a+x /run.sh
 
 WORKDIR /app
+
+CMD ["/run.sh"]
