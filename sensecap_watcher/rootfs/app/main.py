@@ -477,8 +477,10 @@ class WatcherServer:
 
             # Build MQTT config for device - point to HA's Mosquitto broker
             # Device connects permanently via MqttProtocol when mqtt section present
+            # Use the HA server's external IP (not core-mosquitto which is Docker-internal)
+            ha_host = request.host.split(":")[0]  # IP device used to reach OTA
             mqtt_config = {
-                "endpoint": f"mqtt://{self.config.mqtt_host}:{self.config.mqtt_port}",
+                "endpoint": f"mqtt://{ha_host}:{self.config.mqtt_port}",
                 "client_id": f"sensecap-watcher-{mac_clean}",
                 "username": self.config.mqtt_user,
                 "password": self.config.mqtt_password,
