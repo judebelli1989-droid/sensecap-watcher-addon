@@ -61,6 +61,9 @@ class WatcherServer:
         self._device_mac: Optional[str] = None
         self._device_command_topic: Optional[str] = None
 
+        # Command queue for offline delivery
+        self._command_queue = []  # Queue of JSON strings to send to device
+
     async def initialize(self):
         """Initialize all components."""
         logger.info("Initializing WatcherServer components...")
@@ -225,27 +228,36 @@ class WatcherServer:
             logger.error(f"Error handling HA command: {e}")
 
     async def _send_to_device(self, message: str):
-        """Send command to device via MQTT (primary) or WebSocket (fallback)."""
-        if hasattr(self, "_device_command_topic") and self._device_command_topic:
-            if self._ha_integration and self._ha_integration._client:
-                self._ha_integration._client.publish(
-                    self._device_command_topic, message, qos=1
-                )
-                logger.info(f"Sent to device via MQTT: {self._device_command_topic}")
-                return
-            else:
-                logger.warning("MQTT not connected, trying WebSocket fallback")
-
+        """Send command to device via WebSocket, or queue if offline."""
         if self._device_ws:
             try:
                 await self._device_ws.send(message)
-                logger.info("Sent to device via WebSocket fallback")
+                logger.info("Sent to device via WebSocket")
+                return
             except Exception as e:
-                logger.error(f"Failed to send to device via WebSocket: {e}")
-        else:
-            logger.warning(
-                "Cannot send to device: no MQTT topic and no WebSocket connection"
-            )
+                logger.warning(f"WebSocket send failed: {e}")
+
+        self._command_queue.append(message)
+        logger.info(
+            f"Command queued for delivery (queue size: {len(self._command_queue)})"
+        )
+
+    async def _flush_command_queue(self):
+        """Send all queued commands to device."""
+        if not self._command_queue or not self._device_ws:
+            return
+
+        logger.info(f"Flushing {len(self._command_queue)} queued commands")
+        while self._command_queue:
+            msg = self._command_queue.pop(0)
+            try:
+                await self._device_ws.send(msg)
+                logger.info("Delivered queued command")
+                await asyncio.sleep(0.1)
+            except Exception as e:
+                logger.warning(f"Failed to deliver queued command: {e}")
+                self._command_queue.insert(0, msg)
+                break
 
     async def _subscribe_device_mqtt(self, mac_clean: str):
         """Subscribe to device MQTT topic to receive device messages."""
@@ -289,6 +301,8 @@ class WatcherServer:
         if self._ha_integration:
             await self._ha_integration.publish_state("binary_sensor/connected", "ON")
 
+        await self._flush_command_queue()
+
         try:
             async for message in websocket:
                 if isinstance(message, bytes):
@@ -325,6 +339,20 @@ class WatcherServer:
                 logger.info(
                     f"Hello handshake completed, session: {hello_response['session_id']}"
                 )
+                return
+
+            elif msg_type == "listen":
+                state = data.get("state", "")
+                logger.info(f"Device listen state: {state}")
+
+                if state in ("detect", "start"):
+                    await asyncio.sleep(0.5)
+                    stop_msg = json.dumps({"type": "tts", "state": "stop"})
+                    if self._device_ws:
+                        await self._device_ws.send(stop_msg)
+                        logger.info("Sent TTS stop to end listen session")
+
+                    await self._flush_command_queue()
                 return
 
             elif msg_type == "audio":
