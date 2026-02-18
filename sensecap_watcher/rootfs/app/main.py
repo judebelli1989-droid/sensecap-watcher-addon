@@ -336,6 +336,8 @@ class WatcherServer:
         app = web.Application()
         app.router.add_get("/ota/version", self.handle_ota_version)
         app.router.add_get("/ota/firmware", self.handle_ota_firmware)
+        app.router.add_post("/ota/", self.handle_ota_post)
+        app.router.add_post("/ota", self.handle_ota_post)
 
         self._ota_runner = web.AppRunner(app)
         await self._ota_runner.setup()
@@ -372,6 +374,27 @@ class WatcherServer:
         if firmware_path.exists():
             return web.FileResponse(firmware_path)
         return web.Response(status=404, text="Firmware not found")
+
+    async def handle_ota_post(self, request: web.Request) -> web.Response:
+        """Handle diagnostic POST request from device.
+
+        Args:
+            request: HTTP request
+
+        Returns:
+            JSON response
+        """
+        logger.info(f"OTA POST request: {request.method} {request.path}")
+        logger.info(f"Headers: {dict(request.headers)}")
+
+        body = await request.read()
+        try:
+            data = json.loads(body)
+            logger.info(f"Body (JSON): {data}")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            logger.info(f"Body (Raw): {body[:2000]!r}")
+
+        return web.json_response({"status": "ok"})
 
     # ==================== Reconnect Logic ====================
 
