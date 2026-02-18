@@ -346,34 +346,15 @@ class WatcherServer:
             logger.error(f"Error processing device message: {e}")
 
     async def _handle_binary_message(self, data: bytes):
-        """Handle binary message (opus audio) from device.
-
-        BinaryProtocol2: version(2B) + type(2B) + reserved(2B) + timestamp(4B) + payload_size(4B) + payload
-        """
-        if len(data) < 14:
-            logger.warning(f"Binary message too short: {len(data)} bytes")
-            return
-
-        payload = data[14:]
-        if not payload:
-            return
-
-        if self._monitoring:
-            noise_detected = await self._monitoring.detect_noise(payload)
-            if self._ha_integration:
-                await self._ha_integration.publish_state(
-                    "binary_sensor/noise_detected",
-                    "ON" if noise_detected else "OFF",
-                )
-
-        if self._speechkit:
-            text = await self._speechkit.recognize(payload)
-            if text:
-                logger.info(f"STT result: {text}")
-                if self._ha_integration:
-                    await self._ha_integration.fire_event(
-                        "voice_command", {"text": text}
-                    )
+        """Handle binary message (opus audio) from device."""
+        # Just log receipt for now - noise detection and STT not configured
+        if not hasattr(self, "_binary_msg_count"):
+            self._binary_msg_count = 0
+        self._binary_msg_count += 1
+        if self._binary_msg_count == 1 or self._binary_msg_count % 100 == 0:
+            logger.debug(
+                f"Received {self._binary_msg_count} audio frames ({len(data)} bytes)"
+            )
 
     # ==================== OTA HTTP Server ====================
 

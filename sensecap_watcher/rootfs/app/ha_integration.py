@@ -557,11 +557,13 @@ class HAIntegration:
             return
 
         def on_message(client, userdata, msg):
+            logger.info(f"MQTT message received: {msg.topic}")
             if self._loop:
                 asyncio.run_coroutine_threadsafe(
                     callback(msg.topic, msg.payload.decode()), self._loop
                 )
 
         self._client.on_message = on_message
-        self._client.subscribe(f"{self.NODE_ID}/+/+/set")
-        logger.info("Subscribed to command topics")
+        topic = f"{self.NODE_ID}/+/+/set"
+        result, mid = self._client.subscribe(topic)
+        logger.info(f"Subscribed to {topic}: result={result}, mid={mid}")
