@@ -466,6 +466,15 @@ async def main():
     logger.info(f"WebSocket port: {config.websocket_port}")
     logger.info(f"OTA port: {config.ota_port}")
     logger.info(f"LLM provider: {config.llm_provider}")
+    logger.info(f"MQTT host: {config.mqtt_host}, port: {config.mqtt_port}")
+    logger.info(
+        f"MQTT user: {config.mqtt_user!r}, has_password: {bool(config.mqtt_password)}"
+    )
+    logger.info(f"SUPERVISOR_TOKEN present: {bool(config.supervisor_token)}")
+    import os
+
+    logger.debug(f"ENV MQTT_HOST={os.environ.get('MQTT_HOST', 'NOT SET')}")
+    logger.debug(f"ENV MQTT_USER={os.environ.get('MQTT_USER', 'NOT SET')}")
 
     # Create server
     server = WatcherServer(config)
