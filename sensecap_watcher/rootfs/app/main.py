@@ -408,12 +408,8 @@ class WatcherServer:
                 logger.info(f"Device listen state: {state}")
 
                 if state in ("detect", "start"):
-                    await asyncio.sleep(0.5)
-                    stop_msg = json.dumps({"type": "tts", "state": "stop"})
-                    if self._device_ws:
-                        await self._device_ws.send(stop_msg)
-                        logger.info("Sent TTS stop to end listen session")
-
+                    # Don't send TTS stop — let SenseCraft cloud handle voice
+                    # Just flush any queued HA commands
                     await self._flush_command_queue()
                 return
 
