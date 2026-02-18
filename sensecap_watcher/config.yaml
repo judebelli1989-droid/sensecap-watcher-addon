@@ -31,13 +31,13 @@ options:
   ollama_model: "llama3.2"
   ollama_vision_model: "llava"
 schema:
-  claude_proxy_url: url
-  claude_proxy_key: str
-  claude_fallback_url: url
-  claude_fallback_key: str
+  claude_proxy_url: str?
+  claude_proxy_key: str?
+  claude_fallback_url: str?
+  claude_fallback_key: str?
   claude_model: str
-  yandex_api_key: str
-  yandex_folder_id: str
+  yandex_api_key: str?
+  yandex_folder_id: str?
   monitoring_interval: int(10,3600)
   confidence_threshold: int(0,100)
   custom_prompt: str
