@@ -1,6 +1,9 @@
 import os
 import json
 import logging
+import urllib.request
+
+logger = logging.getLogger(__name__)
 
 
 class Config:
@@ -33,21 +36,80 @@ class Config:
         self.ollama_model = options.get("ollama_model", "llama3")
         self.ollama_vision_model = options.get("ollama_vision_model", "llava")
 
-        # Env vars
+        # MQTT credentials: try Supervisor API first, then env vars, then defaults
         self.supervisor_token = os.environ.get("SUPERVISOR_TOKEN", "")
-        self.mqtt_host = os.environ.get("MQTT_HOST", "")
-
-        mqtt_port_env = os.environ.get("MQTT_PORT")
-        if mqtt_port_env:
-            try:
-                self.mqtt_port = int(mqtt_port_env)
-            except ValueError:
-                self.mqtt_port = 1883
+        mqtt = self._fetch_mqtt_from_supervisor()
+        if mqtt:
+            self.mqtt_host = mqtt["host"]
+            self.mqtt_port = mqtt["port"]
+            self.mqtt_user = mqtt["username"]
+            self.mqtt_password = mqtt["password"]
         else:
-            self.mqtt_port = 1883
+            # Fallback to env vars
+            self.mqtt_host = os.environ.get("MQTT_HOST", "")
+            mqtt_port_env = os.environ.get("MQTT_PORT")
+            if mqtt_port_env:
+                try:
+                    self.mqtt_port = int(mqtt_port_env)
+                except ValueError:
+                    self.mqtt_port = 1883
+            else:
+                self.mqtt_port = 1883
+            self.mqtt_user = os.environ.get("MQTT_USER", "")
+            self.mqtt_password = os.environ.get("MQTT_PASSWORD", "")
 
-        self.mqtt_user = os.environ.get("MQTT_USER", "")
-        self.mqtt_password = os.environ.get("MQTT_PASSWORD", "")
+        # Final fallback: ensure host has a default
+        if not self.mqtt_host:
+            self.mqtt_host = "core-mosquitto"
+
+        logger.info(
+            "MQTT config: host=%s, port=%s, user=%r",
+            self.mqtt_host,
+            self.mqtt_port,
+            self.mqtt_user,
+        )
+
+    def _fetch_mqtt_from_supervisor(self) -> dict | None:
+        """Fetch MQTT credentials from HA Supervisor API.
+
+        Returns:
+            Dict with host, port, username, password on success; None on failure.
+        """
+        token = self.supervisor_token
+        if not token:
+            logger.warning(
+                "SUPERVISOR_TOKEN not available, cannot fetch MQTT from Supervisor API"
+            )
+            return None
+
+        try:
+            req = urllib.request.Request(
+                "http://supervisor/services/mqtt",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            resp = urllib.request.urlopen(req, timeout=10)
+            data = json.loads(resp.read()).get("data", {})
+
+            host = data.get("host", "core-mosquitto")
+            port = int(data.get("port", 1883))
+            username = data.get("username", "")
+            password = data.get("password", "")
+
+            logger.info(
+                "MQTT credentials fetched from Supervisor API (host=%s, port=%d, user=%r)",
+                host,
+                port,
+                username,
+            )
+            return {
+                "host": host,
+                "port": port,
+                "username": username,
+                "password": password,
+            }
+        except Exception as e:
+            logger.error("Failed to fetch MQTT from Supervisor API: %s", e)
+            return None
 
     def _mask(self, val: str) -> str:
         if not val or not isinstance(val, str):
