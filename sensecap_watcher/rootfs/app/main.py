@@ -6,6 +6,7 @@ import logging
 import signal
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -241,7 +242,12 @@ class WatcherServer:
 
         try:
             async for message in websocket:
-                await self.process_device_message(message)
+                if isinstance(message, bytes):
+                    # Binary message = opus audio data
+                    await self._handle_binary_message(message)
+                else:
+                    # Text message = JSON
+                    await self.process_device_message(message)
         except websockets.ConnectionClosed as e:
             logger.warning(f"Device disconnected: {e}")
         except Exception as e:
@@ -251,19 +257,28 @@ class WatcherServer:
             await self.handle_disconnect()
 
     async def process_device_message(self, message: str):
-        """Process incoming message from device.
-
-        Args:
-            message: JSON message string
-        """
+        """Process incoming JSON message from device."""
         try:
             data = json.loads(message)
             msg_type = data.get("type", "")
             payload = data.get("payload", {})
 
-            logger.debug(f"Device message: type={msg_type}")
+            logger.info(f"Device message: type={msg_type}")
 
-            if msg_type == "audio":
+            if msg_type == "hello":
+                hello_response = {
+                    "type": "hello",
+                    "transport": "websocket",
+                    "session_id": str(uuid.uuid4()),
+                    "audio_params": {"sample_rate": 24000, "frame_duration": 60},
+                }
+                await self._device_ws.send(json.dumps(hello_response))
+                logger.info(
+                    f"Hello handshake completed, session: {hello_response['session_id']}"
+                )
+                return
+
+            elif msg_type == "audio":
                 # Audio data from device (for STT)
                 audio_bytes = bytes.fromhex(payload.get("data", ""))
                 if audio_bytes:
@@ -329,6 +344,36 @@ class WatcherServer:
             logger.error(f"Invalid JSON from device: {e}")
         except Exception as e:
             logger.error(f"Error processing device message: {e}")
+
+    async def _handle_binary_message(self, data: bytes):
+        """Handle binary message (opus audio) from device.
+
+        BinaryProtocol2: version(2B) + type(2B) + reserved(2B) + timestamp(4B) + payload_size(4B) + payload
+        """
+        if len(data) < 14:
+            logger.warning(f"Binary message too short: {len(data)} bytes")
+            return
+
+        payload = data[14:]
+        if not payload:
+            return
+
+        if self._monitoring:
+            noise_detected = await self._monitoring.detect_noise(payload)
+            if self._ha_integration:
+                await self._ha_integration.publish_state(
+                    "binary_sensor/noise_detected",
+                    "ON" if noise_detected else "OFF",
+                )
+
+        if self._speechkit:
+            text = await self._speechkit.recognize(payload)
+            if text:
+                logger.info(f"STT result: {text}")
+                if self._ha_integration:
+                    await self._ha_integration.fire_event(
+                        "voice_command", {"text": text}
+                    )
 
     # ==================== OTA HTTP Server ====================
 
