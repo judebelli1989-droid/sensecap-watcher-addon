@@ -34,6 +34,7 @@ options:
   ollama_url: "http://localhost:11434"
   ollama_model: "llama3.2"
   ollama_vision_model: "llava"
+  sensecraft_mcp_url: ""
 schema:
   claude_proxy_url: str?
   claude_proxy_key: str?
@@ -54,3 +55,4 @@ schema:
   ollama_url: url?
   ollama_model: str?
   ollama_vision_model: str?
+  sensecraft_mcp_url: str?

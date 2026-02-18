@@ -13,6 +13,7 @@ from typing import Optional
 
 import websockets
 from aiohttp import web
+from sensecraft_mcp import SenseCraftMCP
 
 from config import Config
 from llm_base import create_llm_adapter, LLMAdapter
@@ -104,6 +105,15 @@ class WatcherServer:
 
         # Create HA Tools
         self._ha_tools = HATools(self.config)
+
+        # Start SenseCraft MCP bridge (connects to SenseCraft Agent cloud)
+        self._sensecraft_mcp: Optional[SenseCraftMCP] = None
+        if self.config.sensecraft_mcp_url:
+            self._sensecraft_mcp = SenseCraftMCP(
+                self.config.sensecraft_mcp_url, self._ha_tools
+            )
+            await self._sensecraft_mcp.start()
+            logger.info("SenseCraft MCP bridge started")
 
         logger.info("All components initialized")
 
