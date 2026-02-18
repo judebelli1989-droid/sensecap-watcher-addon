@@ -1,10 +1,13 @@
-#!/bin/bash
+#!/usr/bin/with-contenv bash
 
 echo "Starting SenseCAP Watcher AI..."
 
-# Get MQTT credentials from Supervisor API (single python3 call)
+# with-contenv injects SUPERVISOR_TOKEN from s6-overlay
+echo "DEBUG: SUPERVISOR_TOKEN length = ${#SUPERVISOR_TOKEN}"
+
+# Get MQTT credentials from Supervisor API
 if [ -n "${SUPERVISOR_TOKEN}" ]; then
-    echo "SUPERVISOR_TOKEN found, fetching MQTT config..."
+    echo "Fetching MQTT config from Supervisor..."
     MQTT_INFO=$(curl -s -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" http://supervisor/services/mqtt 2>/dev/null)
     echo "DEBUG MQTT_INFO: ${MQTT_INFO}"
 
