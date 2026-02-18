@@ -382,7 +382,7 @@ class WatcherServer:
                         "params": {
                             "capabilities": {
                                 "vision": {
-                                    "url": f"http://{self.config.mqtt_host}:{self.config.ota_port}/vision/explain",
+                                    "url": f"http://{self.config.host_ip}:{self.config.ota_port}/vision/explain",
                                     "token": "sensecap-local",
                                 }
                             }

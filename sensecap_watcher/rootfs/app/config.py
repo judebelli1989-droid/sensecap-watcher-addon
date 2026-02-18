@@ -66,6 +66,9 @@ class Config:
         if not self.mqtt_host:
             self.mqtt_host = "core-mosquitto"
 
+        # Host IP for external access (device needs real LAN IP, not Docker DNS)
+        self.host_ip = self._fetch_host_ip()
+
         logger.info(
             "MQTT config: host=%s, port=%s, user=%r",
             self.mqtt_host,
@@ -111,6 +114,27 @@ class Config:
 
         logger.warning("SUPERVISOR_TOKEN not found in environment or s6-overlay paths")
         return ""
+
+    def _fetch_host_ip(self) -> str:
+        token = self.supervisor_token
+        if not token:
+            return "192.168.1.248"
+        try:
+            req = urllib.request.Request(
+                "http://supervisor/network/info",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            resp = urllib.request.urlopen(req, timeout=10)
+            data = json.loads(resp.read()).get("data", {})
+            for iface in data.get("interfaces", []):
+                for addr in iface.get("ipv4", {}).get("address", []):
+                    ip = addr.split("/")[0]
+                    if ip and not ip.startswith("172.") and not ip.startswith("127."):
+                        logger.info("Host IP from Supervisor: %s", ip)
+                        return ip
+        except Exception as e:
+            logger.warning("Failed to get host IP from Supervisor: %s", e)
+        return "192.168.1.248"
 
     def _fetch_mqtt_from_supervisor(self) -> dict | None:
         """Fetch MQTT credentials from HA Supervisor API.
