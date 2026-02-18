@@ -1,4 +1,5 @@
 name: "SenseCAP Watcher AI"
+description: "Visual AI assistant for SenseCAP Watcher device with camera, voice control, and display management"
 slug: sensecap_watcher
 version: "1.0.0"
 arch: [aarch64, amd64]
