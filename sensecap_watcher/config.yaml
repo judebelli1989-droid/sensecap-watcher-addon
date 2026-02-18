@@ -11,7 +11,8 @@ ports:
   8081/tcp: 8081   # OTA HTTP
 hassio_api: true
 homeassistant_api: true
-mqtt: {want: true}
+services:
+  - mqtt:want
 map: [share:rw]
 options:
   claude_proxy_url: ""
