@@ -57,6 +57,10 @@ class WatcherServer:
         # Tasks
         self._monitoring_task: Optional[asyncio.Task] = None
 
+        # MQTT device state
+        self._device_mac: Optional[str] = None
+        self._device_command_topic: Optional[str] = None
+
     async def initialize(self):
         """Initialize all components."""
         logger.info("Initializing WatcherServer components...")
@@ -73,6 +77,9 @@ class WatcherServer:
             await self._ha_integration.register_entities()
             await self._ha_integration.publish_initial_states()
             await self._ha_integration.subscribe_commands(self._handle_ha_command)
+            self._ha_integration.set_device_message_callback(
+                self.process_device_message
+            )
         else:
             logger.warning("Failed to connect to MQTT broker")
 
@@ -119,21 +126,16 @@ class WatcherServer:
                 )
 
             elif component == "button" and object_id == "analyze_scene":
-                if not self._device_ws:
-                    logger.warning(
-                        "Cannot send analyze_scene: device not connected via WebSocket"
+                await self._send_to_device(
+                    json.dumps(
+                        {
+                            "type": "alert",
+                            "status": "Analyzing",
+                            "message": "Analyzing scene...",
+                            "emotion": "microchip_ai",
+                        }
                     )
-                else:
-                    await self._send_to_device(
-                        json.dumps(
-                            {
-                                "type": "alert",
-                                "status": "Analyzing",
-                                "message": "Analyzing scene...",
-                                "emotion": "microchip_ai",
-                            }
-                        )
-                    )
+                )
 
             elif component == "text" and object_id == "custom_prompt":
                 self.config.custom_prompt = payload
@@ -158,38 +160,28 @@ class WatcherServer:
                 )
 
             elif component == "notify" and object_id == "tts":
-                if not self._device_ws:
-                    logger.warning(
-                        "Cannot send tts: device not connected via WebSocket"
+                await self._send_to_device(
+                    json.dumps(
+                        {"type": "tts", "state": "sentence_start", "text": payload}
+                    )
+                )
+
+            elif component == "siren" and object_id == "alarm":
+                if payload.upper() == "ON":
+                    await self._send_to_device(
+                        json.dumps(
+                            {
+                                "type": "alert",
+                                "status": "ALARM",
+                                "message": "Alarm triggered!",
+                                "emotion": "triangle_exclamation",
+                            }
+                        )
                     )
                 else:
                     await self._send_to_device(
-                        json.dumps(
-                            {"type": "tts", "state": "sentence_start", "text": payload}
-                        )
+                        json.dumps({"type": "llm", "emotion": "neutral"})
                     )
-
-            elif component == "siren" and object_id == "alarm":
-                if not self._device_ws:
-                    logger.warning(
-                        "Cannot send alarm: device not connected via WebSocket"
-                    )
-                else:
-                    if payload.upper() == "ON":
-                        await self._send_to_device(
-                            json.dumps(
-                                {
-                                    "type": "alert",
-                                    "status": "ALARM",
-                                    "message": "Alarm triggered!",
-                                    "emotion": "triangle_exclamation",
-                                }
-                            )
-                        )
-                    else:
-                        await self._send_to_device(
-                            json.dumps({"type": "llm", "emotion": "neutral"})
-                        )
                 await self._ha_integration.publish_state("siren/alarm", payload)
 
             elif component == "select" and object_id == "display_mode":
@@ -201,39 +193,27 @@ class WatcherServer:
                     "Custom": "neutral",
                 }
                 if payload in mode_to_emotion:
-                    if not self._device_ws:
-                        logger.warning(
-                            "Cannot send display_mode: device not connected via WebSocket"
-                        )
-                    else:
-                        await self._send_to_device(
-                            json.dumps(
-                                {"type": "llm", "emotion": mode_to_emotion[payload]}
-                            )
-                        )
+                    await self._send_to_device(
+                        json.dumps({"type": "llm", "emotion": mode_to_emotion[payload]})
+                    )
                     await self._display.set_mode_local(payload)
                     await self._ha_integration.publish_state(
                         "select/display_mode", payload
                     )
 
             elif component == "text" and object_id == "display_message":
-                if not self._device_ws:
-                    logger.warning(
-                        "Cannot send display_message: device not connected via WebSocket"
+                await self._send_to_device(
+                    json.dumps(
+                        {"type": "tts", "state": "sentence_start", "text": payload}
                     )
-                else:
-                    await self._send_to_device(
-                        json.dumps(
-                            {"type": "tts", "state": "sentence_start", "text": payload}
-                        )
-                    )
+                )
                 await self._ha_integration.publish_state(
                     "text/display_message", payload
                 )
 
             elif component == "switch" and object_id == "display_power":
                 on = payload.upper() == "ON"
-                if on and self._device_ws:
+                if on:
                     await self._send_to_device(
                         json.dumps({"type": "llm", "emotion": "neutral"})
                     )
@@ -245,16 +225,43 @@ class WatcherServer:
             logger.error(f"Error handling HA command: {e}")
 
     async def _send_to_device(self, message: str):
-        """Send message to connected device.
+        """Send command to device via MQTT (primary) or WebSocket (fallback)."""
+        if hasattr(self, "_device_command_topic") and self._device_command_topic:
+            if self._ha_integration and self._ha_integration._client:
+                self._ha_integration._client.publish(
+                    self._device_command_topic, message, qos=1
+                )
+                logger.info(f"Sent to device via MQTT: {self._device_command_topic}")
+                return
+            else:
+                logger.warning("MQTT not connected, trying WebSocket fallback")
 
-        Args:
-            message: JSON message string
-        """
         if self._device_ws:
             try:
                 await self._device_ws.send(message)
+                logger.info("Sent to device via WebSocket fallback")
             except Exception as e:
-                logger.error(f"Failed to send to device: {e}")
+                logger.error(f"Failed to send to device via WebSocket: {e}")
+        else:
+            logger.warning(
+                "Cannot send to device: no MQTT topic and no WebSocket connection"
+            )
+
+    async def _subscribe_device_mqtt(self, mac_clean: str):
+        """Subscribe to device MQTT topic to receive device messages."""
+        device_topic = f"xiaozhi/device/{mac_clean}"
+        if self._ha_integration and self._ha_integration._client:
+            result, mid = self._ha_integration._client.subscribe(device_topic)
+            logger.info(f"Subscribed to device topic {device_topic}: result={result}")
+
+            self._device_command_topic = f"xiaozhi/server/{mac_clean}"
+
+            if self._ha_integration:
+                await self._ha_integration.publish_state(
+                    "binary_sensor/connected", "ON"
+                )
+        else:
+            logger.warning("Cannot subscribe to device topic: MQTT not connected")
 
     # ==================== WebSocket Server ====================
 
@@ -314,7 +321,7 @@ class WatcherServer:
                     "session_id": str(uuid.uuid4()),
                     "audio_params": {"sample_rate": 24000, "frame_duration": 60},
                 }
-                await self._device_ws.send(json.dumps(hello_response))
+                await self._send_to_device(json.dumps(hello_response))
                 logger.info(
                     f"Hello handshake completed, session: {hello_response['session_id']}"
                 )
@@ -453,30 +460,48 @@ class WatcherServer:
             except (json.JSONDecodeError, UnicodeDecodeError):
                 device_info = {}
 
-            # Log device check-in
             app_info = device_info.get("application", {})
             board_info = device_info.get("board", {})
             device_version = app_info.get("version", "unknown")
             device_ip = board_info.get("ip", request.remote)
             mac = device_info.get("mac_address", "unknown")
+            # Clean MAC for topic use (remove colons)
+            mac_clean = mac.replace(":", "").lower() if mac != "unknown" else "unknown"
+
             logger.info(
                 f"OTA check-in: device={mac}, version={device_version}, ip={device_ip}"
             )
 
-            # Build response per xiaozhi OTA protocol
-            ws_host = request.host.split(":")[0]
-            ws_port = self.config.websocket_port
+            # Store device MAC for MQTT topic routing
+            self._device_mac = mac_clean
+
+            # Build MQTT config for device - point to HA's Mosquitto broker
+            # Device connects permanently via MqttProtocol when mqtt section present
+            mqtt_config = {
+                "endpoint": f"mqtt://{self.config.mqtt_host}:{self.config.mqtt_port}",
+                "client_id": f"sensecap-watcher-{mac_clean}",
+                "username": self.config.mqtt_user,
+                "password": self.config.mqtt_password,
+                "publish_topic": f"xiaozhi/device/{mac_clean}",
+                "subscribe_topic": f"xiaozhi/server/{mac_clean}",
+            }
 
             response = {
                 "server_time": {
                     "timestamp": int(time.time() * 1000),
                     "timezone_offset": 0,
                 },
-                "websocket": {"url": f"ws://{ws_host}:{ws_port}/ws"},
-                "firmware": {},  # Empty = no update available
+                "mqtt": mqtt_config,
+                "firmware": {},
             }
 
-            logger.info(f"OTA response: websocket={response['websocket']['url']}")
+            # Subscribe to device's publish topic to receive its messages
+            await self._subscribe_device_mqtt(mac_clean)
+
+            logger.info(
+                f"OTA response: mqtt endpoint={mqtt_config['endpoint']}, "
+                f"device_topic={mqtt_config['publish_topic']}"
+            )
             return web.json_response(response)
         except Exception as e:
             logger.error(f"OTA POST handler error: {e}")

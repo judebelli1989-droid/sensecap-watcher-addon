@@ -31,6 +31,7 @@ class HAIntegration:
         self._client: Optional[mqtt.Client] = None
         self._connected = asyncio.Event()
         self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._device_message_callback = None
 
     def _on_connect(self, client, userdata, flags, rc):
         """MQTT connect callback."""
@@ -546,8 +547,12 @@ class HAIntegration:
         await self._publish(topic, payload, retain=False)
         logger.info(f"Fired event {event_type}: {data}")
 
+    def set_device_message_callback(self, callback):
+        """Set callback for messages from device via xiaozhi MQTT topics."""
+        self._device_message_callback = callback
+
     async def subscribe_commands(self, callback):
-        """Subscribe to command topics.
+        """Subscribe to command topics and device topics.
 
         Args:
             callback: Async callback function(topic, payload)
@@ -558,10 +563,17 @@ class HAIntegration:
 
         def on_message(client, userdata, msg):
             logger.info(f"MQTT message received: {msg.topic}")
-            if self._loop:
-                asyncio.run_coroutine_threadsafe(
-                    callback(msg.topic, msg.payload.decode()), self._loop
-                )
+            if msg.topic.startswith("xiaozhi/device/"):
+                if self._device_message_callback and self._loop:
+                    asyncio.run_coroutine_threadsafe(
+                        self._device_message_callback(msg.payload.decode()),
+                        self._loop,
+                    )
+            elif msg.topic.endswith("/set"):
+                if self._loop:
+                    asyncio.run_coroutine_threadsafe(
+                        callback(msg.topic, msg.payload.decode()), self._loop
+                    )
 
         self._client.on_message = on_message
         topic = f"{self.NODE_ID}/+/+/set"
