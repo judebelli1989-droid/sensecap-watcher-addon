@@ -1,6 +1,7 @@
 """Main orchestrator for SenseCAP Watcher addon."""
 
 import asyncio
+import base64
 import json
 import logging
 import signal
@@ -53,6 +54,10 @@ class WatcherServer:
         self._ws_server = None
         self._ota_runner = None
         self._ota_site = None
+
+        # Camera
+        self._last_photo: Optional[bytes] = None
+        self._photo_event: Optional[asyncio.Event] = None
 
         # Tasks
         self._monitoring_task: Optional[asyncio.Task] = None
@@ -356,16 +361,36 @@ class WatcherServer:
             logger.info(f"Device message: type={msg_type}")
 
             if msg_type == "hello":
+                session_id = str(uuid.uuid4())
                 hello_response = {
                     "type": "hello",
                     "transport": "websocket",
-                    "session_id": str(uuid.uuid4()),
+                    "session_id": session_id,
                     "audio_params": {"sample_rate": 24000, "frame_duration": 60},
                 }
                 await self._send_to_device(json.dumps(hello_response))
-                logger.info(
-                    f"Hello handshake completed, session: {hello_response['session_id']}"
-                )
+                logger.info(f"Hello handshake completed, session: {session_id}")
+
+                # Send MCP initialize with vision capabilities
+                self._mcp_id = getattr(self, "_mcp_id", 0) + 1
+                mcp_init = {
+                    "type": "mcp",
+                    "payload": {
+                        "jsonrpc": "2.0",
+                        "id": self._mcp_id,
+                        "method": "initialize",
+                        "params": {
+                            "capabilities": {
+                                "vision": {
+                                    "url": f"http://{self.config.mqtt_host}:{self.config.ota_port}/vision/explain",
+                                    "token": "sensecap-local",
+                                }
+                            }
+                        },
+                    },
+                }
+                await self._send_to_device(json.dumps(mcp_init))
+                logger.info("Sent MCP initialize with vision URL")
                 return
 
             elif msg_type == "listen":
@@ -478,6 +503,7 @@ class WatcherServer:
         app.router.add_get("/ota/firmware", self.handle_ota_firmware)
         app.router.add_post("/ota/", self.handle_ota_post)
         app.router.add_post("/ota", self.handle_ota_post)
+        app.router.add_post("/vision/explain", self.handle_vision_explain)
 
         self._ota_runner = web.AppRunner(app)
         await self._ota_runner.setup()
@@ -560,6 +586,66 @@ class WatcherServer:
         except Exception as e:
             logger.error(f"OTA POST handler error: {e}")
             return web.json_response({"error": str(e)}, status=500)
+
+    async def handle_vision_explain(self, request: web.Request) -> web.Response:
+        """Receive JPEG from device camera and return AI analysis."""
+        try:
+            reader = await request.multipart()
+            image_data = None
+            question = "What do you see?"
+
+            async for part in reader:
+                if part.name == "file" or part.filename:
+                    image_data = await part.read()
+                elif part.name == "question":
+                    question = (await part.read()).decode("utf-8")
+
+            if not image_data:
+                return web.json_response(
+                    {"success": False, "message": "No image received"}, status=400
+                )
+
+            logger.info(
+                f"Received camera image: {len(image_data)} bytes, question: {question}"
+            )
+
+            self._last_photo = image_data
+            if self._photo_event:
+                self._photo_event.set()
+
+            # Publish JPEG to HA as camera entity via MQTT
+            if self._ha_integration:
+                await self._ha_integration._publish(
+                    f"{HAIntegration.NODE_ID}/image/snapshot/image",
+                    image_data,
+                    retain=True,
+                )
+
+            # Save to /data for debugging
+            photo_path = Path("/data/last_photo.jpg")
+            photo_path.write_bytes(image_data)
+
+            # Try LLM vision analysis if available
+            description = f"Photo captured ({len(image_data)} bytes)"
+            if self._llm_adapter and hasattr(self._llm_adapter, "analyze_image"):
+                try:
+                    img_b64 = base64.b64encode(image_data).decode("utf-8")
+                    description = await self._llm_adapter.analyze_image(
+                        img_b64, question
+                    )
+                except Exception as e:
+                    logger.warning(f"LLM vision analysis failed: {e}")
+
+            if self._ha_integration:
+                await self._ha_integration.publish_state(
+                    "sensor/last_event", description[:255]
+                )
+
+            return web.json_response({"success": True, "message": description})
+
+        except Exception as e:
+            logger.error(f"Vision explain error: {e}")
+            return web.json_response({"success": False, "message": str(e)}, status=500)
 
     # ==================== Reconnect Logic ====================
 
