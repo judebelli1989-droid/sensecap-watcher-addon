@@ -1,5 +1,5 @@
-ARG BUILD_FROM
-FROM $BUILD_FROM
+ARG BUILD_FROM=ghcr.io/home-assistant/aarch64-base:latest
+FROM ${BUILD_FROM}
 
 # Install system dependencies
 RUN apk add --no-cache \
@@ -17,7 +17,7 @@ RUN apk add --no-cache \
 COPY requirements.txt /tmp/
 
 # Install Python dependencies
-RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
+RUN pip3 install --no-cache-dir --break-system-packages -r /tmp/requirements.txt
 
 # Copy application files
 COPY app/ /app/
