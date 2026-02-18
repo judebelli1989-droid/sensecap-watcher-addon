@@ -501,6 +501,36 @@ class HAIntegration:
         await self._publish(topic, state)
         logger.debug(f"Published state for {entity_id}: {state}")
 
+    async def publish_initial_states(self):
+        """Publish initial default states for all entities."""
+        initial_states = {
+            # Switches default OFF
+            "switch/monitoring": "OFF",
+            "switch/voice_assistant": "OFF",
+            "switch/display_power": "ON",
+            # Binary sensors default OFF
+            "binary_sensor/connected": "OFF",
+            "binary_sensor/motion_detected": "OFF",
+            "binary_sensor/noise_detected": "OFF",
+            # Sensors default empty/zero
+            "sensor/last_event": "",
+            # Numbers default values
+            "number/monitoring_interval": "30",
+            "number/confidence_threshold": "50",
+            # Text fields default empty
+            "text/custom_prompt": "",
+            "text/display_message": "",
+            # Select default
+            "select/display_mode": "Clock",
+            # Siren default OFF
+            "siren/alarm": "OFF",
+        }
+
+        for entity_id, state in initial_states.items():
+            await self.publish_state(entity_id, state)
+
+        logger.info(f"Published initial states for {len(initial_states)} entities")
+
     async def fire_event(self, event_type: str, data: dict):
         """Fire a Home Assistant event via MQTT.
 

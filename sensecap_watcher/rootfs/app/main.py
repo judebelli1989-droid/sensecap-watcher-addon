@@ -70,6 +70,7 @@ class WatcherServer:
         if connected:
             logger.info("Connected to MQTT broker")
             await self._ha_integration.register_entities()
+            await self._ha_integration.publish_initial_states()
             await self._ha_integration.subscribe_commands(self._handle_ha_command)
         else:
             logger.warning("Failed to connect to MQTT broker")
