@@ -1,7 +1,14 @@
-#!/usr/bin/with-contenv bash
+#!/bin/bash
 
 # Write debug to file and stdout
 exec 2>&1
+
+# s6-overlay v3 doesn't pass Docker env vars to services
+# Read SUPERVISOR_TOKEN from PID 1 environment if not set
+if [ -z "$SUPERVISOR_TOKEN" ]; then
+    SUPERVISOR_TOKEN=$(tr '\0' '\n' < /proc/1/environ 2>/dev/null | grep '^SUPERVISOR_TOKEN=' | cut -d= -f2-)
+    export SUPERVISOR_TOKEN
+fi
 
 echo "[run.sh] Starting SenseCAP Watcher AI..."
 echo "[run.sh] SUPERVISOR_TOKEN length = ${#SUPERVISOR_TOKEN}"
