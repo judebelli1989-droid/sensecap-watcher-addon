@@ -15,37 +15,35 @@ class DisplayMode(Enum):
 
 MODE_TO_EMOTION = {
     DisplayMode.CLOCK: "neutral",
-    DisplayMode.WEATHER: "cloud_sun",
-    DisplayMode.STATUS: "microchip_ai",
-    DisplayMode.AI_LOG: "robot",
+    DisplayMode.WEATHER: "cool",
+    DisplayMode.STATUS: "thinking",
+    DisplayMode.AI_LOG: "confident",
     DisplayMode.CUSTOM: "neutral",
 }
 
+# Valid emoji names supported by xiaozhi firmware (Twemoji32/64)
 EMOTIONS = [
     "neutral",
     "happy",
+    "laughing",
+    "funny",
     "sad",
     "angry",
-    "surprised",
-    "confused",
-    "thinking",
-    "sleeping",
-    "winking",
-    "love",
-    "cool",
     "crying",
-    "laughing",
-    "scared",
-    "sick",
-    "dizzy",
-    "dead",
-    "robot",
-    "alien",
-    "ghost",
-    "devil",
-    "angel",
-    "cat",
-    "dog",
+    "loving",
+    "embarrassed",
+    "surprised",
+    "shocked",
+    "thinking",
+    "winking",
+    "cool",
+    "relaxed",
+    "delicious",
+    "kissy",
+    "confident",
+    "sleepy",
+    "silly",
+    "confused",
 ]
 
 
@@ -104,9 +102,7 @@ class DisplayManager:
         logger.debug(f"Showing emotion: {emotion}")
         await self._send_xiaozhi({"type": "llm", "emotion": emotion})
 
-    async def show_alert(
-        self, status: str, message: str, emotion: str = "triangle_exclamation"
-    ):
+    async def show_alert(self, status: str, message: str, emotion: str = "surprised"):
         logger.debug(f"Showing alert: {status} - {message}")
         await self._send_xiaozhi(
             {

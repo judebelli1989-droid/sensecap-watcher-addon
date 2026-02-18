@@ -135,7 +135,7 @@ class WatcherServer:
                             "type": "alert",
                             "status": "Analyzing",
                             "message": "Analyzing scene...",
-                            "emotion": "microchip_ai",
+                            "emotion": "thinking",
                         }
                     )
                 )
@@ -177,7 +177,7 @@ class WatcherServer:
                                 "type": "alert",
                                 "status": "ALARM",
                                 "message": "Alarm triggered!",
-                                "emotion": "triangle_exclamation",
+                                "emotion": "shocked",
                             }
                         )
                     )
@@ -190,9 +190,9 @@ class WatcherServer:
             elif component == "select" and object_id == "display_mode":
                 mode_to_emotion = {
                     "Clock": "neutral",
-                    "Weather": "cloud_sun",
-                    "Status": "microchip_ai",
-                    "AI Log": "robot",
+                    "Weather": "cool",
+                    "Status": "thinking",
+                    "AI Log": "confident",
                     "Custom": "neutral",
                 }
                 if payload in mode_to_emotion:
@@ -223,6 +223,33 @@ class WatcherServer:
                 await self._ha_integration.publish_state(
                     "switch/display_power", "ON" if on else "OFF"
                 )
+
+            elif component == "raw" and object_id == "mcp":
+                # Send raw MCP tool call to device
+                # payload = tool name, or JSON {"name": "...", "arguments": {...}}
+                try:
+                    params = json.loads(payload)
+                    tool_name = params.get("name", payload)
+                    tool_args = params.get("arguments", {})
+                except (json.JSONDecodeError, AttributeError):
+                    tool_name = payload
+                    tool_args = {}
+
+                self._mcp_id = getattr(self, "_mcp_id", 0) + 1
+                mcp_msg = {
+                    "type": "mcp",
+                    "payload": {
+                        "jsonrpc": "2.0",
+                        "id": self._mcp_id,
+                        "method": "tools/call",
+                        "params": {
+                            "name": tool_name,
+                            "arguments": tool_args,
+                        },
+                    },
+                }
+                await self._send_to_device(json.dumps(mcp_msg))
+                logger.info(f"Sent MCP tool call: {tool_name}({tool_args})")
 
         except Exception as e:
             logger.error(f"Error handling HA command: {e}")
@@ -403,8 +430,17 @@ class WatcherServer:
                                 result.get("description", "")[:255],
                             )
 
+            elif msg_type == "mcp":
+                logger.info(
+                    f"MCP response from device: {json.dumps(payload, ensure_ascii=False)[:500]}"
+                )
+                if self._ha_integration:
+                    await self._ha_integration.publish_state(
+                        "sensor/last_event",
+                        f"MCP: {json.dumps(payload, ensure_ascii=False)[:255]}",
+                    )
+
             elif msg_type == "wheel":
-                # Wheel rotation event
                 direction = payload.get("direction", "")
                 logger.info(f"Wheel event: {direction}")
 
