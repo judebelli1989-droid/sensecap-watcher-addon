@@ -1,0 +1,7 @@
+websockets
+aiohttp
+httpx
+opuslib
+paho-mqtt
+Pillow
+numpy

@@ -1,0 +1,49 @@
+name: "SenseCAP Watcher AI"
+slug: sensecap_watcher
+version: "1.0.0"
+arch: [aarch64, amd64]
+startup: services
+boot: auto
+ports:
+  8080/tcp: 8080   # WebSocket
+  8081/tcp: 8081   # OTA HTTP
+hassio_api: true
+homeassistant_api: true
+mqtt: {want: true}
+map: [share:rw]
+options:
+  claude_proxy_url: ""
+  claude_proxy_key: ""
+  claude_fallback_url: ""
+  claude_fallback_key: ""
+  claude_model: "claude-sonnet-4-5-20250929"
+  yandex_api_key: ""
+  yandex_folder_id: ""
+  monitoring_interval: 60
+  confidence_threshold: 70
+  custom_prompt: "Опиши что происходит. Если видишь людей или необычную активность — сообщи."
+  websocket_port: 8080
+  ota_port: 8081
+  log_level: "info"
+  llm_provider: "claude"
+  ollama_url: "http://localhost:11434"
+  ollama_model: "llama3.2"
+  ollama_vision_model: "llava"
+schema:
+  claude_proxy_url: url
+  claude_proxy_key: str
+  claude_fallback_url: url
+  claude_fallback_key: str
+  claude_model: str
+  yandex_api_key: str
+  yandex_folder_id: str
+  monitoring_interval: int(10,3600)
+  confidence_threshold: int(0,100)
+  custom_prompt: str
+  websocket_port: port
+  ota_port: port
+  log_level: list(debug|info|warning|error)
+  llm_provider: list(claude|ollama)
+  ollama_url: url?
+  ollama_model: str?
+  ollama_vision_model: str?
