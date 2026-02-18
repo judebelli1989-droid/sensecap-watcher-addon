@@ -1,12 +1,21 @@
 #!/usr/bin/with-contenv bashio
 
-echo "=== DIAG: run.sh started ==="
-echo "SUPERVISOR_TOKEN env: ${SUPERVISOR_TOKEN:+SET (${#SUPERVISOR_TOKEN} chars)}"
-echo "SUPERVISOR_TOKEN env: ${SUPERVISOR_TOKEN:-NOT SET}"
-echo "s6 file /run/s6/container_environment/SUPERVISOR_TOKEN exists: $(test -f /run/s6/container_environment/SUPERVISOR_TOKEN && echo YES || echo NO)"
-echo "s6 file /var/run/s6/container_environment/SUPERVISOR_TOKEN exists: $(test -f /var/run/s6/container_environment/SUPERVISOR_TOKEN && echo YES || echo NO)"
-ls -la /run/s6/container_environment/ 2>/dev/null || echo "DIR /run/s6/container_environment/ NOT FOUND"
-ls -la /var/run/s6/container_environment/ 2>/dev/null || echo "DIR /var/run/s6/container_environment/ NOT FOUND"
-echo "=== DIAG: launching python ==="
+# Fetch MQTT credentials from HA Supervisor via bashio
+if bashio::services.available "mqtt"; then
+    export MQTT_HOST="$(bashio::services mqtt "host")"
+    export MQTT_PORT="$(bashio::services mqtt "port")"
+    export MQTT_USER="$(bashio::services mqtt "username")"
+    export MQTT_PASSWORD="$(bashio::services mqtt "password")"
+    bashio::log.info "MQTT from Supervisor: ${MQTT_HOST}:${MQTT_PORT} (user: ${MQTT_USER})"
+else
+    bashio::log.warning "MQTT service not available, using defaults"
+    export MQTT_HOST="core-mosquitto"
+    export MQTT_PORT="1883"
+    export MQTT_USER=""
+    export MQTT_PASSWORD=""
+fi
+
+# Pass SUPERVISOR_TOKEN explicitly
+export SUPERVISOR_TOKEN="${SUPERVISOR_TOKEN}"
 
 exec python3 /app/main.py
