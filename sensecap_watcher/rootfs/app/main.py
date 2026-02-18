@@ -397,7 +397,7 @@ class WatcherServer:
 
             # Build response per xiaozhi OTA protocol
             ws_host = request.host.split(":")[0]
-            ws_port = self._config.websocket_port
+            ws_port = self.config.websocket_port
 
             response = {
                 "server_time": {
