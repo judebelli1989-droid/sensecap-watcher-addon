@@ -70,6 +70,11 @@ class WatcherServer:
         # Command queue for offline delivery
         self._command_queue = []  # Queue of JSON strings to send to device
 
+        # Voice pipeline state
+        self._listening: bool = False  # True when device is in listen mode
+        self._audio_buffer: list = []  # Collected opus frames during listen
+        self._voice_task: Optional[asyncio.Task] = None  # Active voice processing task
+
     async def initialize(self):
         """Initialize all components."""
         logger.info("Initializing WatcherServer components...")
@@ -408,9 +413,22 @@ class WatcherServer:
                 logger.info(f"Device listen state: {state}")
 
                 if state in ("detect", "start"):
-                    # Don't send TTS stop — let SenseCraft cloud handle voice
-                    # Just flush any queued HA commands
+                    # User pressed wheel — start collecting audio
+                    self._listening = True
+                    self._audio_buffer = []
                     await self._flush_command_queue()
+
+                elif state == "stop":
+                    # User released wheel — process collected audio
+                    self._listening = False
+                    if self._audio_buffer:
+                        frames = list(self._audio_buffer)
+                        self._audio_buffer = []
+                        if self._voice_task and not self._voice_task.done():
+                            self._voice_task.cancel()
+                        self._voice_task = asyncio.create_task(
+                            self._process_voice(frames)
+                        )
                 return
 
             elif msg_type == "audio":
@@ -490,15 +508,102 @@ class WatcherServer:
             logger.error(f"Error processing device message: {e}")
 
     async def _handle_binary_message(self, data: bytes):
-        """Handle binary message (opus audio) from device."""
-        # Just log receipt for now - noise detection and STT not configured
-        if not hasattr(self, "_binary_msg_count"):
-            self._binary_msg_count = 0
-        self._binary_msg_count += 1
-        if self._binary_msg_count == 1 or self._binary_msg_count % 100 == 0:
-            logger.debug(
-                f"Received {self._binary_msg_count} audio frames ({len(data)} bytes)"
+        """Collect opus audio frames during listen session."""
+        if self._listening:
+            self._audio_buffer.append(data)
+
+    async def _process_voice(self):
+        """Full voice pipeline: opus buffer → STT → LLM → TTS → opus → device."""
+        if not self._audio_buffer:
+            return
+
+        audio_data = b"".join(self._audio_buffer)
+        self._audio_buffer.clear()
+        logger.info(f"Processing voice: {len(audio_data)} bytes of opus audio")
+
+        try:
+            # 1. STT: opus → text
+            await self._send_to_device(json.dumps({"type": "stt", "text": "..."}))
+            text = await self._speechkit.recognize(audio_data)
+            if not text or not text.strip():
+                logger.info("STT returned empty result, ignoring")
+                return
+
+            logger.info(f"STT result: {text}")
+            await self._send_to_device(json.dumps({"type": "stt", "text": text}))
+
+            # 2. LLM: text → response with HA tools
+            await self._send_to_device(
+                json.dumps({"type": "llm", "emotion": "thinking"})
             )
+
+            messages = [{"role": "user", "content": text}]
+            system_prompt = (
+                self.config.custom_prompt
+                or "Ты умный домашний ассистент. Отвечай кратко по-русски."
+            )
+            tools = self._ha_tools.get_tools()
+
+            response = await self._llm_adapter.chat(
+                messages, tools=tools, system=system_prompt
+            )
+            reply_text = response.text
+
+            # Execute tool calls if any
+            if response.tool_calls:
+                tool_results = []
+                for tc in response.tool_calls:
+                    result = await self._ha_tools.execute(
+                        tc["name"], tc.get("arguments", {})
+                    )
+                    tool_results.append({"tool": tc["name"], "result": result})
+                    logger.info(f"Tool {tc['name']}: {result}")
+
+                # Second LLM call with tool results
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": reply_text or "",
+                        "tool_calls": response.tool_calls,
+                    }
+                )
+                for tr in tool_results:
+                    messages.append({"role": "tool", "content": str(tr["result"])})
+                response2 = await self._llm_adapter.chat(messages, system=system_prompt)
+                reply_text = response2.text
+
+            if not reply_text:
+                reply_text = "Готово"
+
+            logger.info(f"LLM reply: {reply_text}")
+
+            # 3. TTS: text → oggopus → binary WS frames
+            await self._send_to_device(json.dumps({"type": "tts", "state": "start"}))
+            await self._send_to_device(
+                json.dumps(
+                    {"type": "tts", "state": "sentence_start", "text": reply_text}
+                )
+            )
+            await self._send_to_device(json.dumps({"type": "llm", "emotion": "happy"}))
+
+            audio_response = await self._speechkit.synthesize(reply_text)
+            if audio_response and self._device_ws:
+                # Send audio as binary frames
+                chunk_size = 960  # 60ms at 16kHz
+                for i in range(0, len(audio_response), chunk_size):
+                    chunk = audio_response[i : i + chunk_size]
+                    if self._device_ws:
+                        await self._device_ws.send(chunk)
+                await asyncio.sleep(0.1)
+
+            await self._send_to_device(json.dumps({"type": "tts", "state": "stop"}))
+            await self._send_to_device(
+                json.dumps({"type": "llm", "emotion": "neutral"})
+            )
+
+        except Exception as e:
+            logger.error(f"Voice pipeline error: {e}", exc_info=True)
+            await self._send_to_device(json.dumps({"type": "tts", "state": "stop"}))
 
     # ==================== OTA HTTP Server ====================
 
