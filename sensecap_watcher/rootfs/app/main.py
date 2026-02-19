@@ -330,6 +330,8 @@ class WatcherServer:
             self.handle_device_connection,
             "0.0.0.0",
             self.config.websocket_port,
+            ping_interval=None,  # Device doesn't respond to WS pings, disable to prevent TCP close
+            ping_timeout=None,
         )
         logger.info(f"WebSocket server started on port {self.config.websocket_port}")
 
@@ -354,6 +356,7 @@ class WatcherServer:
             async for message in websocket:
                 if isinstance(message, bytes):
                     # Binary message = opus audio data
+                    logger.debug(f"Binary frame: {len(message)} bytes")
                     await self._handle_binary_message(message)
                 else:
                     # Text message = JSON
@@ -414,8 +417,14 @@ class WatcherServer:
 
                 if state in ("detect", "start"):
                     # User pressed wheel — start collecting audio
+                    # Send llm:neutral to keep connection alive without breaking audio pipeline
+                    # Do NOT send tts:stop — it calls SetOutputEnable(false) on device
+                    # which stops the AFE audio pipeline and prevents audio from being sent
                     self._listening = True
                     self._audio_buffer = []
+                    await self._send_to_device(
+                        json.dumps({"type": "llm", "emotion": "neutral"})
+                    )
                     await self._flush_command_queue()
 
                 elif state == "stop":
@@ -688,6 +697,7 @@ class WatcherServer:
                 },
                 "websocket": {
                     "url": f"ws://{ha_host}:{ws_port}/ws",
+                    "version": 2,  # Binary protocol v2: 16-byte header + opus payload
                 },
                 "firmware": {},
             }
