@@ -331,7 +331,7 @@ class WatcherBridge:
     async def _greet_voice(self, prompt=None):
         """Send text to cloud AI — device will speak the response via TTS."""
         text = prompt or GREETING_PROMPT
-        r = await self._call_tool("self.chat.send_text", {"text": text}, timeout=5)
+        r = await self._call_tool("self.chat.send_text", {"text": text}, timeout=15)
         if r and "result" in r:
             log.info(f"Greeting sent to AI: {text[:80]}")
         else:
@@ -340,7 +340,7 @@ class WatcherBridge:
     async def _send_tts(self, text):
         """Send text from HA to cloud AI — device speaks the response."""
         log.info(f"TTS from HA: {text[:80]}")
-        r = await self._call_tool("self.chat.send_text", {"text": text}, timeout=5)
+        r = await self._call_tool("self.chat.send_text", {"text": text}, timeout=15)
         if r and "result" in r:
             log.info("TTS sent successfully")
             self.mqttc.publish(f"{STATE_TOPIC}/tts", text, retain=True)
@@ -373,9 +373,9 @@ class WatcherBridge:
             log.warning("Threshold set failed")
 
     async def _on_detection_triggered(self):
-        """Full detection flow: greeting + snapshot + analysis."""
-        await self._greet_voice()
+        """Full detection flow: snapshot + analysis, then greeting."""
         await self._snapshot_and_analyze()
+        await self._greet_voice()
 
     async def _sync_state(self):
         """Fetch current model state and publish to MQTT."""
