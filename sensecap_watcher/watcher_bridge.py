@@ -373,9 +373,10 @@ class WatcherBridge:
             log.warning("Threshold set failed")
 
     async def _on_detection_triggered(self):
-        """Full detection flow: snapshot + analysis, then greeting."""
+        """Detection flow: wait for device to finish speaking, then snapshot + analysis."""
+        # Device already greets via WakeWordInvoke — just wait for it to finish
+        await asyncio.sleep(15)
         await self._snapshot_and_analyze()
-        await self._greet_voice()
 
     async def _sync_state(self):
         """Fetch current model state and publish to MQTT."""
