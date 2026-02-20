@@ -71,7 +71,7 @@ GREETING_PROMPT = os.environ.get(
 class WatcherBridge:
     def __init__(self):
         self.ws = None
-        self.mqttc = mqtt.Client(client_id="watcher_bridge")
+        self.mqttc = mqtt.Client(client_id=f"watcher_bridge_{os.getpid()}")
         self.rpc_id = 100
         self.pending = {}  # rpc_id -> asyncio.Future
         self.model_enabled = False
