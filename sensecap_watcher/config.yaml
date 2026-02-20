@@ -1,6 +1,6 @@
 name: "SenseCAP Watcher Bridge"
 description: "Bridges SenseCAP Watcher to Home Assistant via MQTT"
-version: "1.1.0"
+version: "1.2.0"
 slug: sensecap_watcher
 url: "https://github.com/judebelli1989-droid/sensecap-watcher-addon"
 startup: application
