@@ -79,6 +79,7 @@ class WatcherBridge:
         self.last_target = ""
         self.loop = None
         self._snapshot_lock = asyncio.Lock()
+        self._detection_busy = False
 
     # --- MQTT setup ---
     def mqtt_connect(self):
@@ -264,9 +265,12 @@ class WatcherBridge:
                    "event": "triggered", "model_type": data.get("model_type", 0),
                    "time": time.strftime("%H:%M:%S")}
             self.mqttc.publish(f"{STATE_TOPIC}/detection", json.dumps(det), retain=True)
-            log.info(f"Detection triggered: {det['target']} — snapshot + analysis + greeting")
-            if self.loop:
-                asyncio.ensure_future(self._on_detection_triggered())
+            if self._detection_busy:
+                log.info(f"Detection triggered: {det['target']} — SKIPPED (already processing)")
+            else:
+                log.info(f"Detection triggered: {det['target']} — snapshot + analysis")
+                if self.loop:
+                    asyncio.ensure_future(self._on_detection_triggered())
         elif event == "cooldown_complete":
             self.motion_on = False
             self.mqttc.publish(f"{STATE_TOPIC}/motion", "OFF", retain=True)
@@ -374,9 +378,13 @@ class WatcherBridge:
 
     async def _on_detection_triggered(self):
         """Detection flow: wait for device to finish speaking, then snapshot + analysis."""
-        # Device already greets via WakeWordInvoke — just wait for it to finish
-        await asyncio.sleep(15)
-        await self._snapshot_and_analyze()
+        self._detection_busy = True
+        try:
+            # Device already greets via WakeWordInvoke — just wait for it to finish
+            await asyncio.sleep(15)
+            await self._snapshot_and_analyze()
+        finally:
+            self._detection_busy = False
 
     async def _sync_state(self):
         """Fetch current model state and publish to MQTT."""
