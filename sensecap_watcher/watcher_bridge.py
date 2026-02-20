@@ -103,12 +103,12 @@ class WatcherBridge:
         if topic == f"{CMD_TOPIC}/model_switch":
             enable = 1 if payload == "ON" else 0
             if self.loop:
-                asyncio.run_coroutine_threadsafe(self._call_tool("self.model.enable", {"enable": enable}), self.loop)
+                asyncio.run_coroutine_threadsafe(self._set_model_enable(enable), self.loop)
         elif topic == f"{CMD_TOPIC}/threshold":
             try:
                 val = int(float(payload))
                 if self.loop:
-                    asyncio.run_coroutine_threadsafe(self._call_tool("self.model.param_set", {"threshold": val}), self.loop)
+                    asyncio.run_coroutine_threadsafe(self._set_threshold(val), self.loop)
             except ValueError:
                 pass
         elif topic == f"{CMD_TOPIC}/snapshot":
@@ -346,6 +346,31 @@ class WatcherBridge:
             self.mqttc.publish(f"{STATE_TOPIC}/tts", text, retain=True)
         else:
             log.warning("TTS failed")
+
+    async def _set_model_enable(self, enable):
+        """Enable/disable vision model and update MQTT state."""
+        r = await self._call_tool("self.model.enable", {"enable": enable})
+        if r and "result" in r:
+            try:
+                text = r["result"]["content"][0]["text"]
+                state = json.loads(text)
+                self.model_enabled = state.get("enable", 0) == 1
+                self.mqttc.publish(f"{STATE_TOPIC}/model_state",
+                                   "ON" if self.model_enabled else "OFF", retain=True)
+                log.info(f"Model {'enabled' if self.model_enabled else 'disabled'}")
+            except (KeyError, IndexError, json.JSONDecodeError) as e:
+                log.warning(f"Model enable parse error: {e}")
+        else:
+            log.warning("Model enable failed")
+
+    async def _set_threshold(self, val):
+        """Set detection threshold and update MQTT state."""
+        r = await self._call_tool("self.model.param_set", {"threshold": val})
+        if r and "result" in r:
+            self.mqttc.publish(f"{STATE_TOPIC}/threshold", str(val), retain=True)
+            log.info(f"Threshold set to {val}")
+        else:
+            log.warning("Threshold set failed")
 
     async def _on_detection_triggered(self):
         """Full detection flow: greeting + snapshot + analysis."""
