@@ -380,12 +380,13 @@ class WatcherBridge:
             log.warning("Threshold set failed")
 
     async def _on_detection_triggered(self):
-        """Detection flow: greet + snapshot + analysis on trigger."""
+        """Detection flow: snapshot + analysis first, then greet."""
         self._detection_busy = True
         try:
-            await self._greet_voice("привет")
-            await asyncio.sleep(8)
             await self._snapshot_and_analyze()
+            await self._greet_voice("привет")
+            # Stay busy while device speaks + cooldown to prevent re-trigger
+            await asyncio.sleep(25)
         finally:
             self._detection_busy = False
 
