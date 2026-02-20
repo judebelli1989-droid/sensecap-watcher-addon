@@ -114,6 +114,9 @@ class WatcherBridge:
         elif topic == f"{CMD_TOPIC}/snapshot":
             if self.loop:
                 asyncio.run_coroutine_threadsafe(self._snapshot_and_analyze(), self.loop)
+        elif topic == f"{CMD_TOPIC}/tts":
+            if payload and self.loop:
+                asyncio.run_coroutine_threadsafe(self._send_tts(payload), self.loop)
 
     # --- PLACEHOLDER_DISCOVERY ---
 
@@ -200,6 +203,19 @@ class WatcherBridge:
                     "state_topic": f"{STATE_TOPIC}/analysis",
                     "value_template": "{{ value_json.summary[:250] }}",
                     "json_attributes_topic": f"{STATE_TOPIC}/analysis",
+                    "availability_topic": f"{STATE_TOPIC}/available",
+                },
+            },
+            {
+                "component": "text",
+                "object_id": "watcher_tts",
+                "config": {
+                    "name": "Say",
+                    "icon": "mdi:message-text-outline",
+                    "command_topic": f"{CMD_TOPIC}/tts",
+                    "state_topic": f"{STATE_TOPIC}/tts",
+                    "max": 250,
+                    "mode": "text",
                     "availability_topic": f"{STATE_TOPIC}/available",
                 },
             },
@@ -320,6 +336,16 @@ class WatcherBridge:
             log.info(f"Greeting sent to AI: {text[:80]}")
         else:
             log.warning("Greeting failed")
+
+    async def _send_tts(self, text):
+        """Send text from HA to cloud AI — device speaks the response."""
+        log.info(f"TTS from HA: {text[:80]}")
+        r = await self._call_tool("self.chat.send_text", {"text": text}, timeout=5)
+        if r and "result" in r:
+            log.info("TTS sent successfully")
+            self.mqttc.publish(f"{STATE_TOPIC}/tts", text, retain=True)
+        else:
+            log.warning("TTS failed")
 
     async def _on_detection_triggered(self):
         """Full detection flow: greeting + snapshot + analysis."""
