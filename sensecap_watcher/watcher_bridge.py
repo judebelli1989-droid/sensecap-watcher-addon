@@ -345,7 +345,9 @@ class WatcherBridge:
 
     async def run(self):
         self.loop = asyncio.get_event_loop()
+        log.info("Starting MQTT connection...")
         self.mqtt_connect()
+        log.info("MQTT loop started, entering WebSocket loop...")
 
         while True:
             try:
@@ -383,6 +385,8 @@ class WatcherBridge:
 
 
 def main():
+    log.info("=== WatcherBridge starting ===")
+    log.info(f"Config: DEVICE_WS={DEVICE_WS} MQTT_HOST={MQTT_HOST}:{MQTT_PORT} USER={MQTT_USER}")
     bridge = WatcherBridge()
     loop = asyncio.new_event_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
