@@ -234,9 +234,6 @@ class WatcherBridge:
             return None
         self.rpc_id += 1
         rid = self.rpc_id
-        import traceback
-        caller = ''.join(traceback.format_stack()[-3:-1]).strip()
-        log.info(f"RPC #{rid} → {name} | caller: {caller[:200]}")
         msg = {"jsonrpc": "2.0", "id": rid, "method": "tools/call",
                "params": {"name": name, "arguments": arguments}}
         fut = self.loop.create_future()
@@ -380,13 +377,12 @@ class WatcherBridge:
             log.warning("Threshold set failed")
 
     async def _on_detection_triggered(self):
-        """Detection flow: snapshot + analysis first, then greet."""
+        """Detection flow: snapshot + analysis."""
         self._detection_busy = True
         try:
             await self._snapshot_and_analyze()
-            await self._greet_voice("привет")
-            # Stay busy while device speaks + cooldown to prevent re-trigger
-            await asyncio.sleep(25)
+            # Hold busy through device cooldown to prevent re-trigger
+            await asyncio.sleep(10)
         finally:
             self._detection_busy = False
 
