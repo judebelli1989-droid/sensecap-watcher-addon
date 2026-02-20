@@ -234,6 +234,9 @@ class WatcherBridge:
             return None
         self.rpc_id += 1
         rid = self.rpc_id
+        import traceback
+        caller = ''.join(traceback.format_stack()[-3:-1]).strip()
+        log.info(f"RPC #{rid} → {name} | caller: {caller[:200]}")
         msg = {"jsonrpc": "2.0", "id": rid, "method": "tools/call",
                "params": {"name": name, "arguments": arguments}}
         fut = self.loop.create_future()
