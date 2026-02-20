@@ -34,11 +34,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("watcher_bridge")
 
 # --- Config ---
-DEVICE_WS = os.environ.get("WATCHER_WS", "ws://192.168.1.186:8080/ws")
-MQTT_HOST = os.environ.get("MQTT_HOST", "192.168.1.248")
+DEVICE_WS = os.environ.get("WATCHER_WS", "ws://localhost:8080/ws")
+MQTT_HOST = os.environ.get("MQTT_HOST", "core-mosquitto")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
-MQTT_USER = os.environ.get("MQTT_USER", "addons")
-MQTT_PASS = os.environ.get("MQTT_PASS", "GaereethaicieRoofaa7oofega7uf0chohraiquiph9vohleang1eiPh4oe4rie8")
+MQTT_USER = os.environ.get("MQTT_USER", "")
+MQTT_PASS = os.environ.get("MQTT_PASS", "")
 DEVICE_ID = "sensecap_watcher"
 DEVICE_NAME = "SenseCAP Watcher"
 
