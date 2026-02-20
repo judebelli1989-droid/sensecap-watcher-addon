@@ -1,7 +1,2 @@
-websockets
-aiohttp
-httpx
-opuslib
-paho-mqtt
-Pillow
-numpy
+paho-mqtt>=2.0.0
+websockets>=15.0.1
